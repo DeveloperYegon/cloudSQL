@@ -1,87 +1,73 @@
-const express = require('express');
-const nodemon = require('nodemon');
-const app = express();
-const port = 3000;
+const express = require("express");
+
 const bodyParser = require("body-parser");
 const cors = require("cors");
-const dotenv = require('dotenv').config();
-const mysql = require('mysql2');
+const dotenv = require("dotenv").config();
+const mongoose = require("mongoose");
+
+const app = express();
+const port = 3000;
 
 
-// Middleware
 app.use(cors());
 app.use(bodyParser.json());
 
 
-// Database connection
-const db = mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASS,
-    database: process.env.DB_NAME,
-    connectTimeout: 10000 // 10 seconds
-}); 
+if (!process.env.MONGO_URI) {
+  console.error("Error: MONGO_URI is not defined in the .env file");
+  process.exit(1);
+}
 
-db.connect((err) => {
-    if (err) {
-        console.error('Error connecting to database: ', err);
-        return;
-    }
-    console.log('Connected to database');
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => console.log("Connected to MongoDB"))
+  .catch((err) => {
+    console.error("MongoDB connection error:", err);
+    process.exit(1); 
+  });
+
+
+
+const studentSchema = new mongoose.Schema({
+  full_name: { type: String, required: true },
+  registration_number: { type: String, required: true },
+  fees_paid: { type: Number, required: true },
+  fees_balance: { type: Number, required: true },
+  units_registered: { type: [String], required: true },
+  exam_scores: { type: [Number], required: true },
+  grades: { type: [String], required: true },
+});
+
+const Student = mongoose.model("Student", studentSchema);
+
+
+app.post("/api/students", async (req, res) => {
+  try {
+    const newStudent = new Student(req.body);
+    await newStudent.save();
+    res.status(201).json({ message: "Student added successfully" });
+  } catch (err) {
+    console.error("Error adding student:", err);
+    res.status(500).json({ error: "Failed to add student" });
+  }
+});
+
+app.get("/api/students", async (req, res) => {
+  try {
+    const students = await Student.find();
+    res.json(students);
+  } catch (err) {
+    console.error("Error fetching students:", err);
+    res.status(500).json({ error: "Failed to fetch students" });
+  }
 });
 
 
+app.use((req, res) => {
+  res.status(404).json({ error: "Route not found" });
+});
 
-// Create a new student
-app.post("/api/students", (req, res) => {
-    const {
-      full_name,
-      registration_number,
-      fees_paid,
-      fees_balance,
-      units_registered,
-      exam_scores,
-      grades,
-    } = req.body;
-  
-    const sql = `
-      INSERT INTO students (full_name, registration_number, fees_paid, fees_balance, units_registered, exam_scores, grades)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `;
-    const values = [
-      full_name,
-      registration_number,
-      fees_paid,
-      fees_balance,
-      JSON.stringify(units_registered),
-      JSON.stringify(exam_scores),
-      JSON.stringify(grades),
-    ];
-  
-
-    db.query(sql, values, (err, result) => {
-      if (err) {
-        console.error("Error inserting student:", err);
-        return res.status(500).send("Failed to add student");
-      }
-      res.status(201).send("Student added successfully");
-    });
-  });
-
-
-  // Fetch all students
-app.get("/api/students", (req, res) => {
-    const sql = "SELECT * FROM students";
-  
-    db.query(sql, (err, results) => {
-      if (err) {
-        console.error("Error fetching students:", err);
-        return res.status(500).send("Failed to fetch students");
-      }
-      res.json(results);
-    });
-  });
 
 app.listen(port, () => {
-    console.log(`Server running on port ${port}`);
+  console.log(`Server running on port ${port}`);
 });
